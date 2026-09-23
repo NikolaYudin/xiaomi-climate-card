@@ -2,7 +2,8 @@
 
 Одна универсальная карточка дашборда (Lovelace) для BLE-датчиков температуры/влажности
 Xiaomi (LYWSD03MMC и аналогов): фирменный «оранжевый» стиль Xiaomi, фоновый график
-температуры за 24 часа, комната датчика и автоматическая поддержка светлой/тёмной темы HA.
+температуры за 24 часа, комната датчика, индикатор батареи и автоматическая поддержка
+светлой/тёмной темы HA.
 
 ![light](screenshots/light.png)
 ![dark](screenshots/dark.png)
@@ -12,8 +13,9 @@ Xiaomi (LYWSD03MMC и аналогов): фирменный «оранжевый
 - 🟠 Фирменный стиль Xiaomi: акцент-полоска, градиенты, палитра `#FF6900`
 - 🌡️ Крупная температура + фоновый график истории (24 ч) под строкой значения
 - 💧 Влажность и 📶 уровень сигнала — авто-поиск сущностей того же устройства
+- 🔋 Индикатор батареи в подвале: авто-поиск сущности `_battery`, красный при < 20 %
 - 📍 Комната: из области (area) устройства в HA или fallback-значение
-- 🌗 Темизация: карточка сама красится под светлую/тёммую тему (`var(--…)`)
+- 🌗 Темизация: карточка сама красится под светлую/тёмную тему (`var(--…)`)
 - 🧩 Компактный размер, устойчива к `unavailable` (показывает «—»)
 - 🔁 Универсальность: для нового датчика достаточно заменить одну строку `entity`
 
@@ -39,7 +41,7 @@ Xiaomi (LYWSD03MMC и аналогов): фирменный «оранжевый
 | `(Укажите устройство)` | строка `entity:` и блок `graph → card → entities` | `sensor.kukhnia_temperature_humidity_sensor_bd90_temperature` |
 | `(Укажите комнату)` | `variables.room_fallback` | `Кухня` (показывается, если у устройства не задана область) |
 
-Остальное (имя устройства, влажность, сигнал, комната) карточка определяет сама
+Остальное (имя устройства, влажность, сигнал, батарея, комната) карточка определяет сама
 из реестра HA (`hass.entities / hass.devices / hass.areas`).
 
 ## 📄 Код карточки
@@ -77,7 +79,7 @@ styles:
     - height: 36px
     - padding: 16px
     - border-radius: 50%
-    - background: 'rgba(255,105,0,0.18)'
+    - background: rgba(255,105,0,0.18)
     - color: '#ff6900'
     - margin: 18px 0 18px 18px
     - position: relative
@@ -86,7 +88,7 @@ styles:
     - grid-area: s
     - font-size: 44px
     - font-weight: 700
-    - color: 'var(--primary-text-color)'
+    - color: var(--primary-text-color)
     - align-self: center
     - justify-self: start
     - padding-left: 14px
@@ -137,7 +139,7 @@ styles:
       - position: relative
       - z-index: 1
 custom_fields:
-  accent: |
+  accent: >
     <div style="height:3px;background:linear-gradient(90deg,#ff6900 0%,#ff9a4d 55%,#ffc89a 100%);"></div>
   graph:
     card:
@@ -210,7 +212,29 @@ custom_fields:
           <span style="font-size:20px;font-weight:700;color:var(--primary-text-color);">${v} dBm</span>
         </div>`; ]]]
   footer: |
-    <div style="text-align:center;color:var(--secondary-text-color);opacity:0.7;font-size:13px;padding:2px 0 14px 0;">Xiaomi BLE • LYWSD03MMC</div>
+    [[[ const reg = hass.entities ? hass.entities[entity.entity_id] : null;
+        let bid = null;
+        if (reg && reg.device_id) {
+          for (const [id, e] of Object.entries(hass.entities)) {
+            if (e.device_id === reg.device_id && id.endsWith('_battery')) { bid = id; break; }
+          }
+        }
+        const b = bid ? states[bid] : null;
+        const raw = (b && b.state !== 'unavailable' && b.state !== 'unknown') ? b.state : null;
+        const num = raw !== null ? Math.max(0, Math.min(100, Math.round(parseFloat(raw)))) : NaN;
+        const ok = isFinite(num);
+        const color = ok ? (num < 20 ? '#e53935' : '#ff6900') : 'var(--secondary-text-color)';
+        const batt = ok ? `<span style="display:inline-flex;align-items:center;gap:6px;" title="Батарея">
+            <span style="position:relative;width:24px;height:12px;border:1.5px solid ${color};border-radius:3px;box-sizing:border-box;flex-shrink:0;">
+              <span style="position:absolute;left:1px;top:1px;bottom:1px;width:${num}%;min-width:2px;background:${color};border-radius:1.5px;"></span>
+              <span style="position:absolute;right:-4px;top:2.5px;width:2.5px;height:5px;background:${color};border-radius:0 1px 1px 0;"></span>
+            </span>
+            <span style="font-weight:600;color:${color};">${num}%</span>
+          </span>` : '';
+        const dot = ok ? `<span style="opacity:0.5;">•</span>` : '';
+        return `<div style="display:flex;justify-content:center;align-items:center;gap:8px;color:var(--secondary-text-color);opacity:0.85;font-size:13px;padding:2px 0 14px 0;">
+          ${batt}${dot}<span style="opacity:0.75;">Xiaomi BLE • LYWSD03MMC</span>
+        </div>`; ]]]
 ```
 
 ## 🎨 Кастомизация
@@ -221,7 +245,7 @@ custom_fields:
 | `line_width`, `hours_to_show` | mini-graph-card | толщина линии / глубина истории |
 | `top / left / right / height` | `styles → custom_fields → graph` | положение и размер фонового графика |
 | `font-size` в `label` | `styles → label` | размер цифры температуры |
-| `width/height/padding/margin` в `icon` | `styles → icon` | размер круга термометра |
+| `num < 20` | `custom_fields → footer` | порог «красной» батареи |
 
 ## 🌗 Темы
 
